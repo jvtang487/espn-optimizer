@@ -1,6 +1,5 @@
 from espn_api.football import League
-import requests
-import pandas as pd
+import numpy as np
 
 league = League(league_id=1821237400, 
                 year=2025, 
@@ -8,11 +7,14 @@ league = League(league_id=1821237400,
                 swid="{70B0D541-7666-4B31-8869-4361D56693B2}")
 team_id = 3
 my_team = league.teams[team_id-1]  # pick your team
+
+
 print("My team:", my_team.team_name)
 
 week = 3
 matchups = league.box_scores(week)
 my_matchup = next(m for m in matchups if m.home_team.team_id == team_id or m.away_team.team_id == team_id)
+
 
 # Figure out if you're home or away
 if my_matchup.home_team.team_id == team_id:
@@ -21,46 +23,29 @@ if my_matchup.home_team.team_id == team_id:
 else:
     my_lineup = my_matchup.away_lineup
     opponent_lineup = my_matchup.home_lineup
+
+def adjust_projection(proj, rank, fppg, weight_proj=0.63, weight_fppg=0.37):
+    # Rank 1 = toughest, Rank 32 = easiest
+    # Scale: 0.8x for rank 1 → 1.2x for rank 32
+    scale = np.interp(rank, [1, 32], [0.525, 1.35])
+
+    baseline = (proj * weight_proj) + (fppg * weight_fppg)
+    return baseline * scale
+
+projected = 0
+adj_projected = 0
+actual = 0
     
-# Convert lineup to a DataFrame
-data = []
-for p in my_lineup:
-    data.append({
-        "Slot": p.slot_position,
-        "Name": p.name,
-        "Pos": p.position,
-        "Team": p.proTeam,
-        "Opp": p.pro_opponent,
-        "Proj_Points": p.projected_points,
-        "Actual_Points": p.points
-    })
+for player in my_lineup:
+    adj_proj = adjust_projection(player.projected_points, player.pro_pos_rank, league.player_info(player.name).avg_points)
+    print(player.name, 
+          "Projected:", player.projected_points, 
+          "Actual:", player.points,
+          "Opp Rank:", player.pro_opponent, player.pro_pos_rank,
+          "Adj Proj", adj_proj)
 
-
-teamdf = pd.DataFrame(data)
-
-
-
-positions = ["qb", "rb", "wr", "te", "k", "dst"]
-dvp_data = {}
-
-for pos in positions:
-    url = f"https://www.fantasypros.com/nfl/points-allowed/{pos}.php"
-    tables = pd.read_html(requests.get(url).text)
-
-    # First table is the one we need
-    rb_dvp = tables[0]
-
-    # Clean up team abbreviations
-    rb_dvp = rb_dvp.rename(columns={"Team": "Opp"})
-    rb_dvp["Opp"] = rb_dvp["Opp"].str.extract(r"([A-Z]{2,3})")  # e.g., "DAL", "PHI"
-    rb_dvp = rb_dvp[["Opp", "FPTS/G"]]  # Fantasy points allowed per game
-    rb_dvp.head()
-
-# Example: RB defense vs position
-#print(dvp_data["RB"].head())
-rb_df = teamdf[teamdf["Pos"] == "RB"].copy()
-
-# Merge on Opponent
-rb_df = rb_df.merge(rb_dvp, on="Opp", how="left")
-
-print(rb_df[["Name", "Pos", "Proj_Points", "Opp", "FPTS/G"]])
+    projected += player.projected_points
+    adj_projected += adj_proj
+    actual += player.points
+    
+print("Actual: ", actual, " Projected:", projected, " Diff: ", actual - projected, " Adj Proj :", adj_projected, " Diff: ", actual - adj_projected)
