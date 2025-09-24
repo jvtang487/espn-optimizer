@@ -1,5 +1,7 @@
 from espn_api.football import League
 import numpy as np
+import pandas as pd
+import pulp
 
 league = League(league_id=1821237400, 
                 year=2025, 
@@ -11,7 +13,7 @@ my_team = league.teams[team_id-1]  # pick your team
 
 print("My team:", my_team.team_name)
 
-week = 3
+week = 3 
 matchups = league.box_scores(week)
 my_matchup = next(m for m in matchups if m.home_team.team_id == team_id or m.away_team.team_id == team_id)
 
@@ -24,10 +26,10 @@ else:
     my_lineup = my_matchup.away_lineup
     opponent_lineup = my_matchup.home_lineup
 
-def adjust_projection(proj, rank, fppg, weight_proj=0.63, weight_fppg=0.37):
+def adjust_projection(proj, rank, fppg, weight_proj=0.4, weight_fppg=0.6):
     # Rank 1 = toughest, Rank 32 = easiest
     # Scale: 0.8x for rank 1 → 1.2x for rank 32
-    scale = np.interp(rank, [1, 32], [0.525, 1.35])
+    scale = np.interp(rank, [1, 32], [0.45, 1.2])
 
     baseline = (proj * weight_proj) + (fppg * weight_fppg)
     return baseline * scale
@@ -35,17 +37,61 @@ def adjust_projection(proj, rank, fppg, weight_proj=0.63, weight_fppg=0.37):
 projected = 0
 adj_projected = 0
 actual = 0
-    
+
+lineup_data = []
+
 for player in my_lineup:
     adj_proj = adjust_projection(player.projected_points, player.pro_pos_rank, league.player_info(player.name).avg_points)
-    print(player.name, 
-          "Projected:", player.projected_points, 
-          "Actual:", player.points,
-          "Opp Rank:", player.pro_opponent, player.pro_pos_rank,
-          "Adj Proj", adj_proj)
+    
+    lineup_data.append({
+        "Name": player.name,
+        "Position": player.position,
+        "Projected": player.projected_points,
+        "Actual": player.points,
+        "Adjusted_Projected": adj_proj,
+        "Opp": player.pro_opponent,
+        "Opp_Rank": player.pro_pos_rank,
+    })
 
     projected += player.projected_points
     adj_projected += adj_proj
     actual += player.points
-    
-print("Actual: ", actual, " Projected:", projected, " Diff: ", actual - projected, " Adj Proj :", adj_projected, " Diff: ", actual - adj_projected)
+
+df = pd.DataFrame(lineup_data)
+df["is_QB"] = (df["Position"] == "QB").astype(int)
+df["is_RB"] = (df["Position"] == "RB").astype(int)
+df["is_WR"] = (df["Position"] == "WR").astype(int)
+df["is_TE"] = (df["Position"] == "TE").astype(int)
+df["is_K"]  = (df["Position"] == "K").astype(int)
+df["is_DEF"] = (df["Position"] == "D/ST").astype(int)
+
+# Create decision variables for each player (1 if selected, 0 otherwise)
+player_vars = {i: pulp.LpVariable(f"player_{i}", cat="Binary") for i in df.index}
+
+# Define problem
+prob = pulp.LpProblem("Fantasy_Lineup", pulp.LpMaximize)
+
+# Objective: maximize total adjusted projected points
+prob += pulp.lpSum([df.loc[i, "Adjusted_Projected"] * player_vars[i] for i in df.index])
+
+# Constraints
+prob += pulp.lpSum([df.loc[i, "is_QB"] * player_vars[i] for i in df.index]) == 1
+prob += pulp.lpSum([df.loc[i, "is_RB"] * player_vars[i] for i in df.index]) == 2
+prob += pulp.lpSum([df.loc[i, "is_WR"] * player_vars[i] for i in df.index]) == 2
+prob += pulp.lpSum([df.loc[i, "is_TE"] * player_vars[i] for i in df.index]) == 1
+prob += pulp.lpSum([df.loc[i, "is_K"]  * player_vars[i] for i in df.index]) == 1
+prob += pulp.lpSum([df.loc[i, "is_DEF"] * player_vars[i] for i in df.index]) == 1
+
+# FLEX: one more from RB/WR/TE
+prob += pulp.lpSum([
+    (df.loc[i, "is_RB"] + df.loc[i, "is_WR"] + df.loc[i, "is_TE"]) * player_vars[i] 
+    for i in df.index
+]) == 6
+
+# Solve
+prob.solve()
+
+optimal_lineup = df[[player_vars[i].value() == 1 for i in df.index]]
+print(optimal_lineup[["Name", "Position", "Adjusted_Projected", "Projected", "Actual"]])
+print("Total Projected Points:", optimal_lineup["Adjusted_Projected"].sum(), "Total Actual:", optimal_lineup["Actual"].sum())
+#print("Actual: ", actual, " Projected:", projected, " Diff: ", actual - projected, " Adj Proj :", adj_projected, " Diff: ", actual - adj_projected)
