@@ -13,7 +13,7 @@ my_team = league.teams[team_id-1]  # pick your team
 
 print("My team:", my_team.team_name)
 
-week = 3 
+week = 4 
 matchups = league.box_scores(week)
 my_matchup = next(m for m in matchups if m.home_team.team_id == team_id or m.away_team.team_id == team_id)
 
@@ -26,17 +26,14 @@ else:
     my_lineup = my_matchup.away_lineup
     opponent_lineup = my_matchup.home_lineup
 
-def adjust_projection(proj, rank, fppg, weight_proj=0.4, weight_fppg=0.6):
+def adjust_projection(proj, rank, fppg, weight_proj=0.35, weight_fppg=0.65):
     # Rank 1 = toughest, Rank 32 = easiest
     # Scale: 0.8x for rank 1 → 1.2x for rank 32
-    scale = np.interp(rank, [1, 32], [0.45, 1.2])
+    scale = np.interp(rank, [1, 32], [0.47, 1.2])
 
     baseline = (proj * weight_proj) + (fppg * weight_fppg)
     return baseline * scale
 
-projected = 0
-adj_projected = 0
-actual = 0
 
 lineup_data = []
 
@@ -53,45 +50,52 @@ for player in my_lineup:
         "Opp_Rank": player.pro_pos_rank,
     })
 
-    projected += player.projected_points
-    adj_projected += adj_proj
-    actual += player.points
 
 df = pd.DataFrame(lineup_data)
-df["is_QB"] = (df["Position"] == "QB").astype(int)
-df["is_RB"] = (df["Position"] == "RB").astype(int)
-df["is_WR"] = (df["Position"] == "WR").astype(int)
-df["is_TE"] = (df["Position"] == "TE").astype(int)
-df["is_K"]  = (df["Position"] == "K").astype(int)
-df["is_DEF"] = (df["Position"] == "D/ST").astype(int)
+def greedy_lineup(df, points_col="Adjusted_Projected"):
+    lineup = []
 
-# Create decision variables for each player (1 if selected, 0 otherwise)
-player_vars = {i: pulp.LpVariable(f"player_{i}", cat="Binary") for i in df.index}
+    # QB
+    qb = df[df["Position"] == "QB"].sort_values(points_col, ascending=False).head(1)
+    lineup.append((qb.iloc[0]["Name"], "QB", qb.iloc[0]["Adjusted_Projected"],qb.iloc[0]["Projected"],qb.iloc[0]["Actual"]))
 
-# Define problem
-prob = pulp.LpProblem("Fantasy_Lineup", pulp.LpMaximize)
+    # RBs
+    rbs = df[df["Position"] == "RB"].sort_values(points_col, ascending=False).head(2)
+    for _, row in rbs.iterrows():
+        lineup.append((row["Name"], "RB", row["Adjusted_Projected"],row["Projected"],row["Actual"]))
 
-# Objective: maximize total adjusted projected points
-prob += pulp.lpSum([df.loc[i, "Adjusted_Projected"] * player_vars[i] for i in df.index])
+    # WRs
+    wrs = df[df["Position"] == "WR"].sort_values(points_col, ascending=False).head(2)
+    for _, row in wrs.iterrows():
+        lineup.append((row["Name"], "WR", row["Adjusted_Projected"],row["Projected"],row["Actual"]))
 
-# Constraints
-prob += pulp.lpSum([df.loc[i, "is_QB"] * player_vars[i] for i in df.index]) == 1
-prob += pulp.lpSum([df.loc[i, "is_RB"] * player_vars[i] for i in df.index]) == 2
-prob += pulp.lpSum([df.loc[i, "is_WR"] * player_vars[i] for i in df.index]) == 2
-prob += pulp.lpSum([df.loc[i, "is_TE"] * player_vars[i] for i in df.index]) == 1
-prob += pulp.lpSum([df.loc[i, "is_K"]  * player_vars[i] for i in df.index]) == 1
-prob += pulp.lpSum([df.loc[i, "is_DEF"] * player_vars[i] for i in df.index]) == 1
+    # TE
+    te = df[df["Position"] == "TE"].sort_values(points_col, ascending=False).head(1)
+    lineup.append((te.iloc[0]["Name"], "TE", te.iloc[0]["Adjusted_Projected"],te.iloc[0]["Projected"],te.iloc[0]["Actual"]))
 
-# FLEX: one more from RB/WR/TE
-prob += pulp.lpSum([
-    (df.loc[i, "is_RB"] + df.loc[i, "is_WR"] + df.loc[i, "is_TE"]) * player_vars[i] 
-    for i in df.index
-]) == 6
+    # Kicker
+    k = df[df["Position"] == "K"].sort_values(points_col, ascending=False).head(1)
+    lineup.append((k.iloc[0]["Name"], "K", k.iloc[0]["Adjusted_Projected"],k.iloc[0]["Projected"],k.iloc[0]["Actual"]))
 
-# Solve
-prob.solve()
+    # Defense
+    d = df[df["Position"].isin(["DEF", "D/ST"])].sort_values(points_col, ascending=False).head(1)
+    lineup.append((d.iloc[0]["Name"], "DEF", d.iloc[0]["Adjusted_Projected"],d.iloc[0]["Projected"],d.iloc[0]["Actual"]))
 
-optimal_lineup = df[[player_vars[i].value() == 1 for i in df.index]]
-print(optimal_lineup[["Name", "Position", "Adjusted_Projected", "Projected", "Actual"]])
-print("Total Projected Points:", optimal_lineup["Adjusted_Projected"].sum(), "Total Actual:", optimal_lineup["Actual"].sum())
-#print("Actual: ", actual, " Projected:", projected, " Diff: ", actual - projected, " Adj Proj :", adj_projected, " Diff: ", actual - adj_projected)
+    # FLEX (best remaining RB/WR/TE not already chosen)
+    taken_names = [x[0] for x in lineup]
+    flex_pool = df[df["Position"].isin(["RB", "WR", "TE"]) & ~df["Name"].isin(taken_names)]
+    flex = flex_pool.sort_values(points_col, ascending=False).head(1)
+    lineup.append((flex.iloc[0]["Name"], "FLEX", flex.iloc[0]["Adjusted_Projected"],flex.iloc[0]["Projected"],flex.iloc[0]["Actual"]))
+
+    # Final lineup DataFrame
+    return pd.DataFrame(lineup, columns=["Name", "Role", "Adjusted_Projected", "Projected", "Actual"])
+myOptimizedLineup = greedy_lineup(df, "Adjusted_Projected")
+espnOptimized = greedy_lineup(df, "Projected")
+print(myOptimizedLineup)
+print("Total Adjusted Projected Points:", myOptimizedLineup["Adjusted_Projected"].sum())
+print("Total Projected Points:", myOptimizedLineup["Projected"].sum())
+print("Total Actual Points:", myOptimizedLineup["Actual"].sum())
+print(espnOptimized)
+print("Total Adjusted Projected Points:", espnOptimized["Adjusted_Projected"].sum())
+print("Total Projected Points:", espnOptimized["Projected"].sum())
+print("Total Actual Points:", espnOptimized["Actual"].sum())
