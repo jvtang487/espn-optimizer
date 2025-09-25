@@ -13,7 +13,7 @@ my_team = league.teams[team_id-1]  # pick your team
 
 print("My team:", my_team.team_name)
 
-week = 4 
+week = 4
 matchups = league.box_scores(week)
 my_matchup = next(m for m in matchups if m.home_team.team_id == team_id or m.away_team.team_id == team_id)
 
@@ -43,6 +43,7 @@ for player in my_lineup:
     lineup_data.append({
         "Name": player.name,
         "Position": player.position,
+        "Slot": player.slot_position,
         "Projected": player.projected_points,
         "Actual": player.points,
         "Adjusted_Projected": adj_proj,
@@ -56,46 +57,74 @@ def greedy_lineup(df, points_col="Adjusted_Projected"):
     lineup = []
 
     # QB
-    qb = df[df["Position"] == "QB"].sort_values(points_col, ascending=False).head(1)
-    lineup.append((qb.iloc[0]["Name"], "QB", qb.iloc[0]["Adjusted_Projected"],qb.iloc[0]["Projected"],qb.iloc[0]["Actual"]))
+    qb = df[(df["Position"] == "QB") & (df["Slot"] != "BE")].sort_values(points_col, ascending=False).head(1)
+    lineup.append((qb.iloc[0]["Name"], "QB", qb.iloc[0]["Adjusted_Projected"], qb.iloc[0]["Projected"], qb.iloc[0]["Actual"]))
 
     # RBs
-    rbs = df[df["Position"] == "RB"].sort_values(points_col, ascending=False).head(2)
+    rbs = df[(df["Position"] == "RB") & (df["Slot"] != "BE")].sort_values(points_col, ascending=False).head(2)
     for _, row in rbs.iterrows():
-        lineup.append((row["Name"], "RB", row["Adjusted_Projected"],row["Projected"],row["Actual"]))
+        lineup.append((row["Name"], "RB", row["Adjusted_Projected"], row["Projected"], row["Actual"]))
 
     # WRs
-    wrs = df[df["Position"] == "WR"].sort_values(points_col, ascending=False).head(2)
+    wrs = df[(df["Position"] == "WR") & (df["Slot"] != "BE")].sort_values(points_col, ascending=False).head(2)
     for _, row in wrs.iterrows():
-        lineup.append((row["Name"], "WR", row["Adjusted_Projected"],row["Projected"],row["Actual"]))
+        lineup.append((row["Name"], "WR", row["Adjusted_Projected"], row["Projected"], row["Actual"]))
 
     # TE
-    te = df[df["Position"] == "TE"].sort_values(points_col, ascending=False).head(1)
-    lineup.append((te.iloc[0]["Name"], "TE", te.iloc[0]["Adjusted_Projected"],te.iloc[0]["Projected"],te.iloc[0]["Actual"]))
+    te = df[(df["Position"] == "TE") & (df["Slot"] != "BE")].sort_values(points_col, ascending=False).head(1)
+    lineup.append((te.iloc[0]["Name"], "TE", te.iloc[0]["Adjusted_Projected"], te.iloc[0]["Projected"], te.iloc[0]["Actual"]))
 
     # Kicker
-    k = df[df["Position"] == "K"].sort_values(points_col, ascending=False).head(1)
-    lineup.append((k.iloc[0]["Name"], "K", k.iloc[0]["Adjusted_Projected"],k.iloc[0]["Projected"],k.iloc[0]["Actual"]))
+    k = df[(df["Position"] == "K") & (df["Slot"] != "BE")].sort_values(points_col, ascending=False).head(1)
+    lineup.append((k.iloc[0]["Name"], "K", k.iloc[0]["Adjusted_Projected"], k.iloc[0]["Projected"], k.iloc[0]["Actual"]))
 
     # Defense
-    d = df[df["Position"].isin(["DEF", "D/ST"])].sort_values(points_col, ascending=False).head(1)
-    lineup.append((d.iloc[0]["Name"], "DEF", d.iloc[0]["Adjusted_Projected"],d.iloc[0]["Projected"],d.iloc[0]["Actual"]))
+    d = df[(df["Position"].isin(["DEF", "D/ST"])) & (df["Slot"] != "BE")].sort_values(points_col, ascending=False).head(1)
+    lineup.append((d.iloc[0]["Name"], "DEF", d.iloc[0]["Adjusted_Projected"], d.iloc[0]["Projected"], d.iloc[0]["Actual"]))
 
-    # FLEX (best remaining RB/WR/TE not already chosen)
+    # FLEX (best remaining RB/WR/TE not already chosen, excluding bench)
     taken_names = [x[0] for x in lineup]
-    flex_pool = df[df["Position"].isin(["RB", "WR", "TE"]) & ~df["Name"].isin(taken_names)]
+    flex_pool = df[df["Position"].isin(["RB", "WR", "TE"]) & (df["Slot"] != "BE") & ~df["Name"].isin(taken_names)]
     flex = flex_pool.sort_values(points_col, ascending=False).head(1)
-    lineup.append((flex.iloc[0]["Name"], "FLEX", flex.iloc[0]["Adjusted_Projected"],flex.iloc[0]["Projected"],flex.iloc[0]["Actual"]))
+    if not flex.empty:
+        lineup.append((flex.iloc[0]["Name"], "FLEX", flex.iloc[0]["Adjusted_Projected"], flex.iloc[0]["Projected"], flex.iloc[0]["Actual"]))
 
     # Final lineup DataFrame
-    return pd.DataFrame(lineup, columns=["Name", "Role", "Adjusted_Projected", "Projected", "Actual"])
-myOptimizedLineup = greedy_lineup(df, "Adjusted_Projected")
-espnOptimized = greedy_lineup(df, "Projected")
+    optimized_lineup = pd.DataFrame(lineup, columns=["Name", "Role", "Adjusted_Projected", "Projected", "Actual"])
+
+    # Bench sorted by adjusted projections
+    bench = df[df["Slot"] == "BE"].sort_values(points_col, ascending=False)
+    bench_display = bench[["Name", "Position", "Adjusted_Projected", "Projected", "Actual"]].reset_index(drop=True)
+
+    lineup_totals = {
+        "Total_Adjusted": optimized_lineup["Adjusted_Projected"].sum(),
+        "Total_Projected": optimized_lineup["Projected"].sum(),
+        "Total_Actual": optimized_lineup["Actual"].sum(),
+    }
+
+    bench_totals = {
+        "Total_Adjusted": bench_display["Adjusted_Projected"].sum(),
+        "Total_Projected": bench_display["Projected"].sum(),
+        "Total_Actual": bench_display["Actual"].sum(),
+    }
+
+    return optimized_lineup, bench_display, lineup_totals, bench_totals
+
+myOptimizedLineup, myBench, lineup_totals, bench_totals = greedy_lineup(df, "Adjusted_Projected")
+espnLineup, espnBench, espnlineup_totals, espnbench_totals = greedy_lineup(df, "Projected")
+
+print("=== Optimized Lineup by Adj Proj ===")
 print(myOptimizedLineup)
-print("Total Adjusted Projected Points:", myOptimizedLineup["Adjusted_Projected"].sum())
-print("Total Projected Points:", myOptimizedLineup["Projected"].sum())
-print("Total Actual Points:", myOptimizedLineup["Actual"].sum())
-print(espnOptimized)
-print("Total Adjusted Projected Points:", espnOptimized["Adjusted_Projected"].sum())
-print("Total Projected Points:", espnOptimized["Projected"].sum())
-print("Total Actual Points:", espnOptimized["Actual"].sum())
+print("Lineup Totals:", lineup_totals)
+
+print("\n=== Bench (sorted by Adjusted Projection) ===")
+print(myBench)
+print("Bench Totals:", bench_totals)
+
+print("=== Optimized Lineup by Projection ===")
+print(espnLineup)
+print("Lineup Totals:", espnlineup_totals)
+
+print("\n=== Bench (sorted by Projection) ===")
+print(espnBench)
+print("Bench Totals:", espnbench_totals)
