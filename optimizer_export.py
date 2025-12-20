@@ -189,7 +189,7 @@ if run_btn:
             roster_data.append({
                 "Name": p.name,
                 "Position": p.position,
-                "Team": p.pro_team,
+                "Team": p.proTeam,
                 "Opp_Rank": p.pro_pos_rank,
                 "Projected": p.projected_points,
                 "Avg_Points": p.avg_points,
