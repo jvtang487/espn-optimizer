@@ -93,7 +93,7 @@ if st.button("Run Analysis"):
         low, high = POSITIONAL_SCALES.get(p.position, [0.9, 1.1])
         matchup_scale = np.interp(p.pro_pos_rank, [1, 32], [low, high])
         vegas_scale = 1.1 if game_total > 50 else (0.9 if game_total < 40 else 1.0)
-        baseline = (p['Projected'] * 0.35) + (p['Avg_Points'] * 0.65)
+        baseline = (p.projected_points * 0.35) + (p.avg_points * 0.65)
         
         adj_proj = baseline * matchup_scale * vegas_scale
         
@@ -103,7 +103,7 @@ if st.button("Run Analysis"):
     
     # 4. Solve
     starter_indices = solve_lineup_pulp(df, "Adj_Proj")
-    df['Status'] = ["🚀 Starter" if i in starter_indices else "📋 Bench" for i in df.index]
+    df['Status'] = [ "Starter" if i in starter_indices else "Bench" for i in df.index]
     
     # 5. Display Result
     st.dataframe(df.sort_values("Status", ascending=False), use_container_width=True)
