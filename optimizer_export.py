@@ -37,7 +37,7 @@ def get_vegas_totals(api_key):
         return {game['home_team']: game['bookmakers'][0]['markets'][0]['outcomes'][0]['point'] for game in response}
     except: return {}
 
-def solve_lineup_pulp(df, points_col):
+def solve_lineup_pulp(df, points_col="Adjusted_Projected"):
     prob = pulp.LpProblem("Optimizer", pulp.LpMaximize)
     player_vars = pulp.LpVariable.dicts("p", df.index, cat='Binary')
     prob += pulp.lpSum([df.loc[i, points_col] * player_vars[i] for i in df.index])
@@ -75,6 +75,7 @@ if st.button("Run Analysis"):
     # 1. Connect to ESPN
     league = League(league_id=league_id, year=year, espn_s2=s2, swid=swid)
     team = league.teams[team_ID - 1] # Adjust logic to find specific team
+    st.header(team)
     
     # 2. Get Data
     matchups = league.box_scores(week)
@@ -92,8 +93,9 @@ if st.button("Run Analysis"):
         low, high = POSITIONAL_SCALES.get(p.position, [0.9, 1.1])
         matchup_scale = np.interp(p.pro_pos_rank, [1, 32], [low, high])
         vegas_scale = 1.1 if game_total > 50 else (0.9 if game_total < 40 else 1.0)
+        baseline = (p['Projected'] * 0.35) + (p['Avg_Points'] * 0.65)
         
-        adj_proj = (p.projected_points * 0.4) * matchup_scale * vegas_scale
+        adj_proj = baseline * matchup_scale * vegas_scale
         
         data.append({"Name": p.name, "Position": p.position, "Projected": p.projected_points, "Adj_Proj": adj_proj})
     
