@@ -107,6 +107,7 @@ with st.sidebar:
     year = st.number_input("Year", value=2025)
     swid = st.text_input("SWID (Cookies)", value="{70B0D541...}", type="password")
     espn_s2 = st.text_input("ESPN_S2 (Cookies)", value="AEBCl...", type="password")
+    team_id = st.number_input("Team ID", value=2)
     
     st.divider()
     
@@ -126,7 +127,7 @@ if run_btn:
             
             # Find YOUR team (logic: usually team_id matches index+1, but safer to search)
             # For this demo, we assume you are Team 3. Ideally, add a selector.
-            my_team = league.teams[2] 
+            my_team = league.teams[team_id - 1] 
 
             # Get the Box Score for the specific week
             box_scores = league.box_scores(week)
@@ -158,7 +159,7 @@ if run_btn:
             if p.position == 'DT' or p.position == 'IR': continue # Skip injured/bench slots if needed
 
             # 1. Map Team Name
-            full_team_name = TEAM_MAP.get(p.pro_team.upper(), "Unknown")
+            full_team_name = TEAM_MAP.get(p.proTeam, "Unknown")
             
             # 2. Get Vegas Total (Default to 44.0 if missing)
             game_total = totals_dict.get(full_team_name, 44.0)
