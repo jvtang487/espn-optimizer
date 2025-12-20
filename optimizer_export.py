@@ -178,8 +178,9 @@ if run_btn:
             # --- CRITICAL FIX: HANDLE ZERO AVERAGE ---
             # If avg_points is 0 (hasn't played enough), use projected as a proxy
             # This prevents the 65% weight from crushing their score.
-            avg_pts = p.avg_points
-            if avg_pts == 0:
+            try:
+                avg_pts = league.player_info(p.name).avg_points
+            except:
                 avg_pts = p.projected_points
 
             # 5. Weighted Formula
@@ -192,9 +193,10 @@ if run_btn:
                 "Team": p.proTeam,
                 "Opp_Rank": p.pro_pos_rank,
                 "Projected": p.projected_points,
-                "Avg_Points": p.avg_points,
+                "Avg_Points": avg_pts,
+                "Adj_Proj": adjusted_proj,
                 "Vegas_Total": game_total,
-                "Adj_Proj": adjusted_proj
+                "Actual": p.points
             })
 
         df = pd.DataFrame(roster_data)
