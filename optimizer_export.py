@@ -74,7 +74,7 @@ with st.sidebar:
 if st.button("Run Analysis"):
     # 1. Connect to ESPN
     league = League(league_id=league_id, year=year, espn_s2=s2, swid=swid)
-    team = league.teams[2] # Adjust logic to find specific team
+    team = league.teams[team_ID] # Adjust logic to find specific team
     
     # 2. Get Data
     matchups = league.box_scores(week)
