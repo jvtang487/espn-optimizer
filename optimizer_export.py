@@ -82,7 +82,7 @@ if st.button("Run Analysis"):
     data = []
     totals_dict = get_vegas_totals(vegas_key)
     for p in lineup:
-        full_name = TEAM_MAP.get(p.pro_team.upper(), "Unknown")
+        full_name = TEAM_MAP.get(p.proTeam, "Unknown")
         game_total = totals_dict.get(full_name, 44.0)
         
         # Adjustment Math
