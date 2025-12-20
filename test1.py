@@ -62,7 +62,6 @@ def get_vegas_totals(api_key):
     except Exception:
         return {}
 
-<<<<<<< HEAD
 def solve_lineup_pulp(df, points_col):
     """
     Uses Linear Programming to find the optimal roster.
@@ -74,11 +73,6 @@ def solve_lineup_pulp(df, points_col):
     player_vars = pulp.LpVariable.dicts("player", df.index, cat='Binary')
     
     # Objective: Maximize Points
-=======
-def solve_lineup_pulp(df, points_col="Adjusted_Projected"):
-    prob = pulp.LpProblem("Optimizer", pulp.LpMaximize)
-    player_vars = pulp.LpVariable.dicts("p", df.index, cat='Binary')
->>>>>>> 7d7c2a47b6d414f615dadc792e13de35ad193988
     prob += pulp.lpSum([df.loc[i, points_col] * player_vars[i] for i in df.index])
     
     # --- CONSTRAINTS ---
@@ -102,24 +96,15 @@ def solve_lineup_pulp(df, points_col="Adjusted_Projected"):
     # Return list of indices that were selected
     return [i for i in df.index if player_vars[i].varValue == 1]
 
-<<<<<<< HEAD
 # --- 3. STREAMLIT APP LOGIC ---
 st.set_page_config(page_title="Fantasy Strategist", layout="wide", page_icon="🏈")
 st.title("🏈 Fantasy Football Lineup Optimizer")
-=======
-
-
-# --- 3. STREAMLIT UI ---
-st.set_page_config(page_title="Fantasy Strategist", layout="wide")
-st.title("Fantasy Football Lineup Optimizer")
->>>>>>> 7d7c2a47b6d414f615dadc792e13de35ad193988
 
 # Sidebar Inputs
 with st.sidebar:
     st.header("⚙️ League Settings")
     league_id = st.number_input("League ID", value=1821237400)
     year = st.number_input("Year", value=2025)
-<<<<<<< HEAD
     swid = st.text_input("SWID (Cookies)", value="{70B0D541...}", type="password")
     espn_s2 = st.text_input("ESPN_S2 (Cookies)", value="AEBCl...", type="password")
     
@@ -173,7 +158,7 @@ if run_btn:
             if p.position == 'DT' or p.position == 'IR': continue # Skip injured/bench slots if needed
 
             # 1. Map Team Name
-            full_team_name = TEAM_MAP.get(p.proTeam, "Unknown")
+            full_team_name = TEAM_MAP.get(p.pro_team.upper(), "Unknown")
             
             # 2. Get Vegas Total (Default to 44.0 if missing)
             game_total = totals_dict.get(full_team_name, 44.0)
@@ -256,47 +241,3 @@ if run_btn:
     except Exception as e:
         st.error(f"An error occurred: {e}")
         st.info("Double check your League ID, Year, and Cookies (SWID/S2).")
-=======
-    swid = st.text_input("SWID", value="{70B0D541-7666-4B31-8869-4361D56693B2}", type="password")
-    s2 = st.text_input("ESPN_S2", value="AEBCl...", type="password")
-    team_ID = st.number_input("Team ID", value=2)
-    vegas_key = st.text_input("Odds API Key", value="your_key_here")
-    week = st.slider("Week", 1, 18, 4)
-
-if st.button("Run Analysis"):
-    # 1. Connect to ESPN
-    league = League(league_id=league_id, year=year, espn_s2=s2, swid=swid)
-    team = league.teams[team_ID - 1] # Adjust logic to find specific team
-    st.header(team)
-    
-    # 2. Get Data
-    matchups = league.box_scores(week)
-    my_matchup = next(m for m in matchups if m.home_team.team_id == team.team_id or m.away_team.team_id == team.team_id)
-    lineup = my_matchup.home_lineup if my_matchup.home_team.team_id == team.team_id else my_matchup.away_lineup
-    
-    # 3. Build DataFrame
-    data = []
-    totals_dict = get_vegas_totals(vegas_key)
-    for p in lineup:
-        full_name = TEAM_MAP.get(p.proTeam, "Unknown")
-        game_total = totals_dict.get(full_name, 44.0)
-        
-        # Adjustment Math
-        low, high = POSITIONAL_SCALES.get(p.position, [0.9, 1.1])
-        matchup_scale = np.interp(p.pro_pos_rank, [1, 32], [low, high])
-        vegas_scale = 1.1 if game_total > 50 else (0.9 if game_total < 40 else 1.0)
-        baseline = (p.projected_points * 0.35) + (p.avg_points * 0.65)
-        
-        adj_proj = baseline * matchup_scale * vegas_scale
-        
-        data.append({"Name": p.name, "Position": p.position, "Projected": p.projected_points, "Adj_Proj": adj_proj})
-    
-    df = pd.DataFrame(data)
-    
-    # 4. Solve
-    starter_indices = solve_lineup_pulp(df, "Adj_Proj")
-    df['Status'] = [ "Starter" if i in starter_indices else "Bench" for i in df.index]
-    
-    # 5. Display Result
-    st.dataframe(df.sort_values("Status", ascending=False), use_container_width=True)
->>>>>>> 7d7c2a47b6d414f615dadc792e13de35ad193988
