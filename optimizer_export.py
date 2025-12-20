@@ -67,7 +67,7 @@ with st.sidebar:
     year = st.number_input("Year", value=2025)
     swid = st.text_input("SWID", value="{70B0D541-7666-4B31-8869-4361D56693B2}", type="password")
     s2 = st.text_input("ESPN_S2", value="AEBCl...", type="password")
-    team_ID = st.text_input("Team ID", value=2)
+    team_ID = st.number_input("Team ID", value=2)
     vegas_key = st.text_input("Odds API Key", value="your_key_here")
     week = st.slider("Week", 1, 18, 4)
 
